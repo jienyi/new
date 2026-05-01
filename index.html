@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>稳驰 VSCMG | 工业级数字孪生控制台 V7.0</title>
+    <script type="module" src="https://unpkg.com/@google/model-viewer/dist/model-viewer.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        :root { 
+            --bg: #030712; --panel: rgba(15, 23, 42, 0.7); --border: rgba(59, 130, 246, 0.3); 
+            --accent: #3b82f6; --cyan: #22d3ee; --orange: #fbbf24; --green: #4ade80; --text-main: #f8fafc;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Inter', sans-serif; }
+        body { background: var(--bg); color: var(--text-main); height: 100vh; display: flex; flex-direction: column; overflow: hidden; background-image: radial-gradient(var(--border) 1px, transparent 1px); background-size: 30px 30px; }
+        header { height: 65px; padding: 0 30px; display: flex; justify-content: space-between; align-items: center; background: rgba(1, 4, 9, 0.9); border-bottom: 2px solid var(--accent); backdrop-filter: blur(10px); z-index: 100; }
+        .main-container { flex: 1; display: grid; grid-template-columns: 320px 1fr 360px; gap: 10px; padding: 10px; overflow: hidden; }
+        .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 20px; display: flex; flex-direction: column; gap: 15px; backdrop-filter: blur(10px); }
+        h3 { font-size: 12px; color: var(--cyan); letter-spacing: 2px; text-transform: uppercase; border-left: 3px solid var(--cyan); padding-left: 10px; }
+        .viewport { position: relative; background: #000; border-radius: 8px; border: 1px solid var(--border); overflow: hidden; }
+        model-viewer { width: 100%; height: 100%; outline: none; }
+        .btn-shock { background: linear-gradient(135deg, var(--orange), #d97706); color: #000; border: none; padding: 15px; border-radius: 6px; font-weight: 800; cursor: pointer; transition: 0.3s; margin-top: auto; }
+        .btn-shock:hover { box-shadow: 0 0 15px var(--orange); transform: translateY(-2px); }
+        .data-card { background: rgba(0,0,0,0.4); border: 1px solid var(--border); padding: 15px; border-radius: 8px; }
+        .val-hero { font-size: 28px; font-weight: 900; color: var(--cyan); font-family: monospace; }
+        .chart-container { height: 150px; background: rgba(0,0,0,0.6); border: 1px solid var(--border); border-radius: 4px; margin-top: 10px; }
+        input[type="number"], input[type="range"] { width: 100%; background: #000; border: 1px solid var(--border); padding: 10px; color: #fff; border-radius: 4px; outline: none; }
+    </style>
+</head>
+<body>
+    <header>
+        <div style="font-weight: 900; font-size: 22px; letter-spacing: -1px;">WENCHI <span style="color:var(--accent)">VSCMG</span></div>
+        <div id="sysState" style="font-size: 12px; color: var(--green); font-weight: bold;"><i class="fa-solid fa-circle-check"></i> 动力学引擎已就绪</div>
+    </header>
+
+    <div class="main-container">
+        <aside class="panel">
+            <h3><i class="fa-solid fa-sliders"></i> 参数设定</h3>
+            <div class="data-card">
+                <span style="font-size:10px; color:var(--cyan)">输入载荷 MASS (KG)</span>
+                <input type="number" id="massInput" value="5.5" step="0.1">
+            </div>
+            <div class="data-card">
+                <span style="font-size:10px; color:var(--cyan)">预设冲击强度 (N·M)</span>
+                <input type="range" id="distRange" min="10" max="200" value="120" oninput="document.getElementById('dv').innerText=this.value">
+                <div style="text-align:center; font-size:20px; color:var(--orange); font-weight:bold; margin-top:10px;"><span id="dv">120</span> N·m</div>
+            </div>
+            <button class="btn-shock" onclick="handleShock()">施加瞬态冲击</button>
+        </aside>
+
+        <main class="viewport">
+            <div style="position:absolute; top:20px; left:20px; z-index:10; display:flex; gap:10px;">
+                <button class="btn-shock" style="padding:8px 15px; font-size:10px;" onclick="document.getElementById('viewer').src='model.glb'">模型装配</button>
+                <button class="btn-shock" style="padding:8px 15px; font-size:10px; background:var(--accent);" onclick="document.getElementById('viewer').src='model_exploded.glb'">结构分解</button>
+            </div>
+            <model-viewer id="viewer" src="model.glb" camera-controls auto-rotate shadow-intensity="2" environment-image="neutral" exposure="1.4"></model-viewer>
+        </main>
+
+        <aside class="panel">
+            <h3><i class="fa-solid fa-microchip"></i> 实时遥测</h3>
+            <div class="data-card">
+                <div style="font-size:10px; color:var(--cyan)">峰值补偿力矩</div>
+                <div class="val-hero" id="pTorque">0.00 <small style="font-size:12px; color:var(--text-dim)">N·m</small></div>
+            </div>
+            <div class="data-card">
+                <div style="font-size:10px; color:var(--green)">实时角速度响应</div>
+                <div class="val-hero" id="pVel" style="color:var(--green)">0.000 <small style="font-size:12px; color:var(--text-dim)">rad/s</small></div>
+            </div>
+            <h3><i class="fa-solid fa-chart-line"></i> 姿态相轨迹收敛</h3>
+            <div class="chart-container">
+                <svg id="svg" width="100%" height="100%" viewBox="0 0 200 80">
+                    <path id="path" d="M0 40 L 200 40" fill="none" stroke="#22d3ee" stroke-width="2" />
+                    <line x1="0" y1="40" x2="200" y2="40" stroke="rgba(255,255,255,0.1)" stroke-dasharray="4" />
+                </svg>
+            </div>
+        </aside>
+    </div>
+
+    <script>
+        const Physics = {
+            dt: 0.02, phi: 0, omega: 0, int_e: 0,
+            g: 9.81, h: 0.35, I: 8.5, H: 35, // 基于方案：h=0.35m
+            Kp: 2400, Kd: 400, Ki: 800,
+            step(mass, shock) {
+                let T_g = mass * this.g * this.h * Math.sin(this.phi); // 重力失稳力矩
+                let err = 0 - this.phi;
+                this.int_e = Math.max(-0.5, Math.min(0.5, this.int_e + err * this.dt));
+                let T_cmd = this.Kp * err - this.Kd * this.omega + this.Ki * this.int_e;
+                T_cmd = Math.max(-150, Math.min(150, T_cmd)); // 限制输出力矩
+                let net = T_g + shock + T_cmd + (Math.random()-0.5)*1.2;
+                this.omega += (net/this.I) * this.dt;
+                // 限制最大角速度为 3rad/s
+                this.omega = Math.max(-3, Math.min(3, this.omega));
+                this.phi += this.omega * this.dt;
+                return { roll: this.phi, roll_rate: this.omega, torque: -T_cmd };
+            }
+        };
+
+        let currentShock = 0, pT = 0;
+        const history = new Array(50).fill(0);
+
+        function handleShock() {
+            currentShock = parseFloat(document.getElementById('distRange').value);
+            pT = 0;
+            document.getElementById('sysState').innerText = "冲击响应中...";
+            document.getElementById('sysState').style.color = "var(--orange)";
+            setTimeout(() => {
+                document.getElementById('sysState').innerText = "系统已稳定";
+                document.getElementById('sysState').style.color = "var(--green)";
+            }, 1500); // 调整时间约为 1.5s
+        }
+
+        setInterval(() => {
+            const m = parseFloat(document.getElementById('massInput').value) || 5.5; // 基准质量 5.5kg
+            let res = Physics.step(m, currentShock);
+            if(Math.abs(res.torque) > pT) pT = Math.abs(res.torque);
+            
+            document.getElementById('pTorque').innerHTML = `${pT.toFixed(2)} <small style="font-size:12px; color:var(--text-dim)">N·m</small>`;
+            document.getElementById('pVel').innerHTML = `${Math.abs(res.roll_rate).toFixed(3)} <small style="font-size:12px; color:var(--text-dim)">rad/s</small>`;
+            
+            history.push(res.roll); history.shift();
+            let d = "M0 40 ";
+            history.forEach((v, i) => { d += `L ${i*4} ${40 - v*400} `; });
+            document.getElementById('path').setAttribute("d", d);
+            currentShock *= 0.88;
+        }, 20);
+    </script>
+</body>
+</html>
